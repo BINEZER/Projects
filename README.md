@@ -3,10 +3,13 @@
 Minimal, calm tracker for any project — shipments, client jobs, personal goals — with **weighted stages**.
 Progress = Σ(stage weight × stage progress) ÷ Σ(weights), so weights are relative and fully adjustable per project.
 
-- **Dashboard** – KPIs, needs-attention list, filter/sort/search
+- **Levels** – portfolio → program → project; progress, health, budget and risk roll up the tree (set a "weight in parent" per item)
+- **Methods** – per project: **Traditional** (weighted phases), **Agile** (backlog, sprints, board, burndown, velocity) or **Hybrid** (phases, where a phase can be driven by its backlog items)
+- **Health & metrics** – automatic green/amber/red from schedule (SPI), cost (CPI), overdue dates and risks; earned-value panel; RAID log with a probability × impact heat map
+- **Dashboard** – KPIs, needs-attention list, filter/sort/search by level, method, category
 - **Projects** – editable stages (name, weight, order), per-stage progress, custom details, activity log (add/edit/delete), duplicate, print
 - **Reports** – filter by category/status/due range; charts; export **CSV** (projects, stages) and **Print / PDF**
-- **Admin** – rename/delete categories, create/edit/duplicate/delete templates, JSON backup & restore, theme, account
+- **Admin** – categories, templates (method, sprint length, agile phases), currency label, in-app PM guide, JSON backup & restore, theme, account
 - Everything user-defined can be edited and deleted.
 
 ## Run locally

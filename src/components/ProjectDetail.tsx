@@ -1,27 +1,44 @@
 import { useState } from 'react';
-import type { Config, Project, Stage } from '../types';
-import { currentStage, dueLabel, isOverdue, progressOf, share, uid } from '../lib/progress';
+import type { Config, Kind, Project, Stage } from '../types';
+import type { Metrics } from '../lib/pm';
+import { HEALTH_LABEL, METHOD_LABEL, ownProgress, stageProgress } from '../lib/pm';
+import { currentStage, dueLabel, isOverdue, share, uid } from '../lib/progress';
 import { StageEditor, newStage } from './StageEditor';
 import { ProjectForm } from './ProjectForm';
-import { Icon, I, Pill, Ring } from './ui';
+import { Agile } from './Agile';
+import { RaidLog } from './Raid';
+import { Money } from './Money';
+import { Tree } from './Tree';
+import { HealthDot, Icon, I, Kpi, KindTag, MethodTag, Pill, Ring, idx } from './ui';
 
-export function ProjectDetail({ project: p, config, categories, onSave, onDelete, onBack }: {
-  project: Project; config: Config; categories: string[];
+export function ProjectDetail({ project: p, all, metrics, config, categories, onSave, onDelete, onBack, onCreate }: {
+  project: Project; all: Project[]; metrics: Map<string, Metrics>; config: Config; categories: string[];
   onSave: (p: Project) => void; onDelete: () => void; onBack: () => void;
+  onCreate: (d: { kind: Kind; parentId: string }) => void;
 }) {
+  const m = metrics.get(p.id)!;
+  const container = p.kind !== 'project';
+  const tabs: [string, string][] = container ? [['contents', 'Contents']] : [
+    ...(p.method !== 'agile' ? [['plan', 'Phases'] as [string, string]] : []),
+    ...(p.method !== 'traditional' ? [['agile', p.method === 'agile' ? 'Backlog & sprints' : 'Agile work'] as [string, string]] : []),
+  ];
+  tabs.push(['risks', `Risks${m.openRisks ? ` (${m.openRisks})` : ''}`], ['money', 'Schedule & budget'], ['activity', 'Activity']);
+  const [tab, setTab] = useState(tabs[0][0]);
+  const active = tabs.some(([k]) => k === tab) ? tab : tabs[0][0];
+
   const [editStages, setEditStages] = useState(false);
   const [editing, setEditing] = useState(false);
   const [note, setNote] = useState('');
   const [editLog, setEditLog] = useState<string | null>(null);
-  const pr = progressOf(p.stages);
   const cur = currentStage(p.stages);
   const log = (text: string) => ({ id: uid(), at: Date.now(), text });
+  const parent = all.find((x) => x.id === p.parentId);
 
   /** Apply stage changes; auto-complete / reopen the project and log it. */
   const setStages = (stages: Stage[], text?: string) => {
-    const done = stages.length > 0 && progressOf(stages) >= 99.999;
     const next: Project = { ...p, stages, log: text ? [log(text), ...p.log] : p.log };
-    if (done && p.status === 'active') { next.status = 'done'; next.completedAt = Date.now(); next.log = [log('All stages complete 🎉'), ...next.log]; }
+    const done = stages.length > 0 && ownProgress(next) >= 99.999;
+    if (done && p.status === 'active') { next.status = 'done'; next.completedAt = Date.now(); next.log = [log('All phases complete 🎉'), ...next.log]; }
     if (!done && p.status === 'done') { next.status = 'active'; next.completedAt = undefined; }
     onSave(next);
   };
@@ -34,54 +51,82 @@ export function ProjectDetail({ project: p, config, categories, onSave, onDelete
   const duplicate = () => {
     const now = Date.now();
     location.hash = '#/';
-    onSave({ ...p, id: uid(), title: `${p.title} (copy)`, status: 'active', completedAt: undefined, createdAt: now, log: [log('Duplicated')], stages: p.stages.map((s) => ({ ...s, id: uid(), progress: 0 })) });
+    onSave({ ...p, id: uid(), title: `${p.title} (copy)`, status: 'active', completedAt: undefined, createdAt: now, log: [log('Duplicated')],
+      stages: p.stages.map((s) => ({ ...s, id: uid(), progress: 0 })), backlog: p.backlog.map((i) => ({ ...i, id: uid(), status: 'todo', sprintId: undefined, stageId: undefined, doneAt: undefined })), sprints: [], risks: p.risks.map((r) => ({ ...r, id: uid() })) });
   };
-  const confirmDelete = () => window.confirm(`Delete “${p.title}”? This can’t be undone.`) && onDelete();
+  const confirmDelete = () => window.confirm(`Delete “${p.title}”?${container ? ' Items inside it are kept and moved up a level.' : ''} This can’t be undone.`) && onDelete();
+
+  /** Mark a project done/reopened. */
+  const toggleDone = () => onSave(p.status === 'done'
+    ? { ...p, status: 'active', completedAt: undefined, log: [log('Reopened'), ...p.log] }
+    : { ...p, status: 'done', completedAt: Date.now(), log: [log('Marked complete 🎉'), ...p.log] });
 
   return (
     <>
       <div className="row spread no-print" style={{ margin: '6px 0 14px' }}>
         <button className="btn ghost" onClick={onBack}><Icon d={I.back} /> Back</button>
-        <div className="row"><button className="btn sm" onClick={() => window.print()}><Icon d={I.print} size={14} /> Print</button><button className="btn sm" onClick={duplicate}>Duplicate</button><button className="btn sm" onClick={() => setEditing(true)}><Icon d={I.edit} size={14} /> Edit</button><button className="btn sm danger" onClick={confirmDelete}>Delete</button></div>
+        <div className="row wrap"><button className="btn sm" onClick={toggleDone}>{p.status === 'done' ? 'Reopen' : 'Mark complete'}</button><button className="btn sm" onClick={() => window.print()}><Icon d={I.print} size={14} /> Print</button><button className="btn sm" onClick={duplicate}>Duplicate</button><button className="btn sm" onClick={() => setEditing(true)}><Icon d={I.edit} size={14} /> Edit</button><button className="btn sm danger" onClick={confirmDelete}>Delete</button></div>
       </div>
 
       <div className="card row" style={{ gap: 24, flexWrap: 'wrap' }}>
-        <Ring value={pr} size={110} stroke={10} />
+        <Ring value={m.progress} size={110} stroke={10} />
         <div style={{ flex: 1, minWidth: 220 }}>
-          <div className="row wrap"><Pill text={p.category} /><span className={`tag ${p.status === 'done' ? 'ok' : p.status === 'paused' ? 'warn' : ''}`}>{p.status}</span>{p.due && <span className={`tag ${isOverdue(p) ? 'bad' : ''}`}>{dueLabel(p.due)}</span>}</div>
+          <div className="row wrap"><KindTag kind={p.kind} />{!container && <MethodTag method={p.method} />}<Pill text={p.category} /><span className={`tag ${p.status === 'done' ? 'ok' : p.status === 'paused' ? 'warn' : ''}`}>{p.status}</span>{p.due && <span className={`tag ${isOverdue(p) ? 'bad' : ''}`}>{dueLabel(p.due)}</span>}</div>
           <h1 style={{ margin: '8px 0 2px' }}>{p.title}</h1>
-          <div className="muted">{p.ref && <>Ref {p.ref} · </>}{p.status === 'done' ? 'Completed' : cur ? `Now: ${cur.name}` : 'Add stages to start tracking'}</div>
-        </div>
-        {p.fields.length > 0 && (
-          <div className="stack" style={{ gap: 4, minWidth: 180 }}>
-            {p.fields.map((f) => <div key={f.id} className="small"><span className="faint">{f.label}</span><br /><b>{f.value || '—'}</b></div>)}
+          <div className="muted">
+            {parent && <>In <a href={`#/p/${parent.id}`}>{parent.title}</a> · </>}{p.ref && <>Ref {p.ref} · </>}
+            {container ? `${m.children.length} item${m.children.length === 1 ? '' : 's'} inside` : p.status === 'done' ? 'Completed' : p.method === 'agile' ? `${METHOD_LABEL.agile} delivery` : cur ? `Now: ${cur.name}` : 'Add phases to start tracking'}
           </div>
-        )}
+        </div>
+        {p.fields.length > 0 && <div className="stack" style={{ gap: 4, minWidth: 180 }}>{p.fields.map((f) => <div key={f.id} className="small"><span className="faint">{f.label}</span><br /><b>{f.value || '—'}</b></div>)}</div>}
       </div>
 
-      <div className="cols2" style={{ marginTop: 16, alignItems: 'start' }}>
-        <div className="card" style={{ gridColumn: 'span 1' }}>
-          <div className="row spread"><h2>Stages</h2>
-            <button className="btn sm no-print" onClick={() => setEditStages(!editStages)}>{editStages ? 'Done' : <><Icon d={I.edit} size={14} /> Edit stages & weights</>}</button></div>
-          {editStages ? (
-            <div style={{ marginTop: 10 }}><StageEditor stages={p.stages} make={newStage} onChange={(s) => setStages(s)} /></div>
-          ) : p.stages.length === 0 ? (
-            <p className="muted">No stages yet. Use “Edit stages” to add some.</p>
-          ) : p.stages.map((s) => (
-            <div key={s.id} className={`stage ${cur?.id === s.id ? 'now' : ''}`}>
-              <button className={`check ${s.progress === 100 ? 'done' : s.progress > 0 ? 'part' : ''}`} style={{ ['--p' as string]: s.progress }} aria-label={`Toggle ${s.name}`}
-                onClick={() => setProgress(s.id, s.progress === 100 ? 0 : 100)}><Icon d={I.check} size={15} /></button>
-              <div><div className={`name ${s.progress === 100 ? 'done' : ''}`}>{s.name || 'Untitled'}</div><div className="small faint">{Math.round(share(s, p.stages))}% of project</div></div>
-              <div className="slider row no-print" style={{ gap: 8 }}>
-                <input type="range" min={0} max={100} step={5} value={s.progress} aria-label={`${s.name} progress`}
-                  onChange={(e) => setStages(p.stages.map((x) => (x.id === s.id ? { ...x, progress: +e.target.value } : x)))} />
-                <span className="small muted" style={{ width: 34, textAlign: 'right' }}>{s.progress}%</span>
-              </div>
-            </div>
-          ))}
-        </div>
+      <div className="grid kpis" style={{ marginTop: 16 }}>
+        <div className="card kpi"><div className="v"><HealthDot h={m.health} /></div><div className="l">{HEALTH_LABEL[m.health]}{p.healthOverride && ' (set by you)'}</div></div>
+        <Kpi v={idx(m.spi)} l="Schedule index (SPI)" /><Kpi v={idx(m.cpi)} l="Cost index (CPI)" /><Kpi v={m.openRisks} l="Open risks & issues" tone={m.riskScore >= 15 ? 'var(--bad)' : undefined} />
+      </div>
 
-        <div className="stack">
+      <div className="row wrap no-print" style={{ gap: 6, margin: '18px 0 14px' }}>{tabs.map(([k, l]) => <button key={k} className={`chip ${active === k ? 'on' : ''}`} onClick={() => setTab(k)}>{l}</button>)}</div>
+
+      {active === 'contents' && (
+        <div className="card">
+          <div className="row spread wrap"><h2>Inside this {p.kind}</h2>
+            <div className="row no-print">{p.kind === 'portfolio' && <button className="btn sm" onClick={() => onCreate({ kind: 'program', parentId: p.id })}>+ Program</button>}<button className="btn sm" onClick={() => onCreate({ kind: 'project', parentId: p.id })}>+ Project</button></div></div>
+          {m.children.length ? <Tree roots={m.children} all={all} m={metrics} currency={config.currency} /> : <p className="muted">Empty. Add the {p.kind === 'portfolio' ? 'programs and projects' : 'projects'} that belong here and progress, budget and risk will roll up automatically.</p>}
+          <p className="small faint" style={{ marginBottom: 0 }}>Progress here is the weighted average of what’s inside (set each item’s “weight in parent” when editing it).</p>
+        </div>
+      )}
+
+      {active === 'plan' && (
+        <div className="card">
+          <div className="row spread"><h2>Phases</h2>
+            <button className="btn sm no-print" onClick={() => setEditStages(!editStages)}>{editStages ? 'Done' : <><Icon d={I.edit} size={14} /> Edit phases & weights</>}</button></div>
+          {editStages ? (
+            <div style={{ marginTop: 10 }}><StageEditor stages={p.stages} make={newStage} onChange={(s) => setStages(s)} allowBacklog={p.method === 'hybrid'} /></div>
+          ) : p.stages.length === 0 ? <p className="muted">No phases yet. Use “Edit phases” to add some.</p> : p.stages.map((s) => {
+            const pr = stageProgress(s, p);
+            const driven = s.source === 'backlog';
+            return (
+              <div key={s.id} className={`stage ${cur?.id === s.id ? 'now' : ''}`}>
+                <button className={`check ${pr >= 100 ? 'done' : pr > 0 ? 'part' : ''}`} style={{ ['--p' as string]: pr }} aria-label={`Toggle ${s.name}`} disabled={driven} onClick={() => setProgress(s.id, s.progress === 100 ? 0 : 100)}><Icon d={I.check} size={15} /></button>
+                <div><div className={`name ${pr >= 100 ? 'done' : ''}`}>{s.name || 'Untitled'}</div><div className="small faint">{Math.round(share(s, p.stages))}% of project{driven && ' · driven by backlog'}</div></div>
+                <div className="slider row no-print" style={{ gap: 8 }}>
+                  {driven ? <span className="small muted">From agile work: {Math.round(pr)}%</span> : <>
+                    <input type="range" min={0} max={100} step={5} value={s.progress} aria-label={`${s.name} progress`} onChange={(e) => setStages(p.stages.map((x) => (x.id === s.id ? { ...x, progress: +e.target.value } : x)))} />
+                    <span className="small muted" style={{ width: 34, textAlign: 'right' }}>{s.progress}%</span></>}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {active === 'agile' && <Agile p={p} onSave={onSave} log={log} />}
+      {active === 'risks' && <RaidLog p={p} onSave={onSave} />}
+      {active === 'money' && <Money p={p} m={m} currency={config.currency} onSave={onSave} />}
+
+      {active === 'activity' && (
+        <div className="cols2" style={{ alignItems: 'start' }}>
           <div className="card">
             <h2 style={{ marginBottom: 10 }}>Activity</h2>
             <div className="row no-print"><input type="text" value={note} placeholder="Add an update…" onChange={(e) => setNote(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && addNote()} /><button className="btn" onClick={addNote}>Add</button></div>
@@ -103,9 +148,9 @@ export function ProjectDetail({ project: p, config, categories, onSave, onDelete
           </div>
           {p.notes && <div className="card"><h2 style={{ marginBottom: 6 }}>Notes</h2><div style={{ whiteSpace: 'pre-wrap' }}>{p.notes}</div></div>}
         </div>
-      </div>
+      )}
 
-      {editing && <ProjectForm config={config} categories={categories} project={p} onClose={() => setEditing(false)} onSave={(x) => { onSave(x); setEditing(false); }} onDelete={confirmDelete} />}
+      {editing && <ProjectForm config={config} categories={categories} all={all} project={p} onClose={() => setEditing(false)} onSave={(x) => { onSave(x); setEditing(false); }} onDelete={confirmDelete} />}
     </>
   );
 }

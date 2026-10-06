@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { Config, Project, User } from '../types';
 import { defaultConfig } from './templates';
+import { normalize } from './pm';
 import { loadBackend, type Backend } from './backend';
 
 export function useStore() {
@@ -20,7 +21,7 @@ export function useStore() {
       setProjects(null);
       return;
     }
-    const a = backend.subscribe(user, setProjects);
+    const a = backend.subscribe(user, (ps) => setProjects(ps.map(normalize)));
     const b = backend.subscribeConfig(user, setConfig);
     return () => {
       a();
