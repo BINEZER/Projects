@@ -1,10 +1,10 @@
 import { totalWeight, uid } from '../lib/progress';
 import { Icon, I } from './ui';
 
-type S = { id: string; name: string; weight: number };
+type S = { id: string; name: string; weight: number; source?: 'manual' | 'backlog' };
 
 /** Edit name / weight / order of any stage list; add and delete rows. */
-export function StageEditor<T extends S>({ stages, onChange, make }: { stages: T[]; onChange: (s: T[]) => void; make: () => T }) {
+export function StageEditor<T extends S>({ stages, onChange, make, allowBacklog }: { stages: T[]; onChange: (s: T[]) => void; make: () => T; allowBacklog?: boolean }) {
   const total = totalWeight(stages);
   const set = (i: number, patch: Partial<S>) => onChange(stages.map((s, j) => (j === i ? { ...s, ...patch } : s)));
   const move = (i: number, d: number) => {
@@ -29,6 +29,12 @@ export function StageEditor<T extends S>({ stages, onChange, make }: { stages: T
             <button className="btn ghost icon-btn" onClick={() => move(i, 1)} aria-label="Move down"><Icon d={I.down} /></button>
             <button className="btn ghost icon-btn danger" onClick={() => onChange(stages.filter((_, j) => j !== i))} aria-label="Delete stage"><Icon d={I.x} /></button>
           </div>
+          {allowBacklog && (
+            <label className="row small muted" style={{ gridColumn: '1 / -1', gap: 6, marginTop: -6 }}>
+              <input type="checkbox" checked={s.source === 'backlog'} onChange={(e) => set(i, { source: e.target.checked ? 'backlog' : 'manual' })} />
+              Agile phase: progress comes from the backlog items assigned to it
+            </label>
+          )}
         </div>
       ))}
       <div className="row spread" style={{ marginTop: 10 }}>
@@ -42,4 +48,4 @@ export function StageEditor<T extends S>({ stages, onChange, make }: { stages: T
   );
 }
 
-export const newStage = () => ({ id: uid(), name: '', weight: 10, progress: 0 });
+export const newStage = (): { id: string; name: string; weight: number; progress: number; source?: 'manual' | 'backlog' } => ({ id: uid(), name: '', weight: 10, progress: 0 });

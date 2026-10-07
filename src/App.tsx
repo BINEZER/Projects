@@ -1,10 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
+import type { Kind } from './types';
 import { useStore } from './lib/useStore';
+import { buildMetrics } from './lib/pm';
 import { samples } from './lib/samples';
 import { Dashboard } from './components/Dashboard';
 import { ProjectDetail } from './components/ProjectDetail';
 import { ProjectForm } from './components/ProjectForm';
 import { Reports } from './components/Reports';
+import { Portfolio } from './components/Portfolio';
 import { Admin } from './components/Admin';
 import { Icon, I } from './components/ui';
 
@@ -23,7 +26,7 @@ const Logo = () => <span className="logo"><Icon d={I.check} size={17} /></span>;
 export default function App() {
   const store = useStore();
   const hash = useHash();
-  const [creating, setCreating] = useState(false);
+  const [creating, setCreating] = useState<{ kind?: Kind; parentId?: string } | null>(null);
   const [theme, setThemeState] = useState(() => { try { return localStorage.getItem('tracker.theme') || 'auto'; } catch { return 'auto'; } });
   const setTheme = (t: string) => { setThemeState(t); try { localStorage.setItem('tracker.theme', t); } catch { /* ignore */ } };
   useEffect(() => {
@@ -35,6 +38,8 @@ export default function App() {
   useEffect(() => { document.title = config.workspace || 'Tracker'; }, [config.workspace]);
   const categories = useMemo(() => [...new Set([...config.categories, ...(projects ?? []).map((p) => p.category)])], [config.categories, projects]);
 
+  const metrics = useMemo(() => buildMetrics(projects ?? []), [projects]);
+
   if (!store.ready) return <div className="hero muted">Loading…</div>;
   if (!store.user) return (
     <div className="hero"><div className="card stack" style={{ alignItems: 'center' }}>
@@ -45,7 +50,7 @@ export default function App() {
 
   const route = hash.replace(/^#\/?/, '').split('/');
   const project = route[0] === 'p' ? projects.find((p) => p.id === route[1]) : undefined;
-  const tab = route[0] === 'reports' ? 'reports' : route[0] === 'admin' ? 'admin' : 'dash';
+  const tab = route[0] === 'reports' ? 'reports' : route[0] === 'admin' ? 'admin' : route[0] === 'portfolio' ? 'portfolio' : 'dash';
   const loadSamples = () => samples(config).forEach(store.save);
 
   return (
@@ -54,6 +59,7 @@ export default function App() {
         <a className="brand" href="#/"><Logo /><span className="hide-sm">{config.workspace}</span></a>
         <div className="tabs">
           <a className={`tab ${tab === 'dash' ? 'on' : ''}`} href="#/">Dashboard</a>
+          <a className={`tab ${tab === 'portfolio' ? 'on' : ''}`} href="#/portfolio">Portfolio</a>
           <a className={`tab ${tab === 'reports' ? 'on' : ''}`} href="#/reports">Reports</a>
           <a className={`tab ${tab === 'admin' ? 'on' : ''}`} href="#/admin">Admin</a>
         </div>
@@ -62,13 +68,14 @@ export default function App() {
       {store.mode === 'local' && <div className="banner no-print">Local mode — data is saved in this browser only. It syncs to your account once deployed to Firebase Hosting.</div>}
 
       {route[0] === 'p' ? (
-        project ? <ProjectDetail project={project} config={config} categories={categories} onSave={store.save} onBack={() => (location.hash = '#/')} onDelete={() => { location.hash = '#/'; store.remove(project.id); }} />
+        project ? <ProjectDetail project={project} all={projects} metrics={metrics} config={config} categories={categories} onSave={store.save} onBack={() => history.length > 1 ? history.back() : (location.hash = '#/')} onCreate={setCreating} onDelete={() => { location.hash = '#/'; (projects ?? []).filter((c) => c.parentId === project.id).forEach((c) => store.save({ ...c, parentId: project.parentId })); store.remove(project.id); }} />
           : <div className="empty muted">Project not found. <a href="#/">Back to dashboard</a></div>
-      ) : tab === 'reports' ? <Reports projects={projects} categories={categories} workspace={config.workspace} />
+      ) : tab === 'portfolio' ? <Portfolio projects={projects} metrics={metrics} config={config} onCreate={setCreating} />
+      : tab === 'reports' ? <Reports projects={projects} metrics={metrics} categories={categories} workspace={config.workspace} currency={config.currency} />
       : tab === 'admin' ? <Admin config={config} projects={projects} user={store.user} mode={store.mode} theme={theme} setTheme={setTheme} saveConfig={store.saveConfig} saveProject={store.save} removeProject={store.remove} signOut={() => store.signOut()} />
-      : <Dashboard projects={projects} categories={categories} onNew={() => setCreating(true)} onSample={loadSamples} />}
+      : <Dashboard projects={projects} metrics={metrics} categories={categories} onNew={() => setCreating({})} onSample={loadSamples} />}
 
-      {creating && <ProjectForm config={config} categories={categories} onClose={() => setCreating(false)} onSave={(p) => { store.save(p); setCreating(false); location.hash = `#/p/${p.id}`; }} />}
+      {creating && <ProjectForm config={config} categories={categories} all={projects} defaults={creating} onClose={() => setCreating(null)} onSave={(p) => { store.save(p); setCreating(null); location.hash = `#/p/${p.id}`; }} />}
     </div>
   );
 }

@@ -1,5 +1,5 @@
 import type { Config, Project, User } from '../types';
-import { defaultConfig } from './templates';
+import { normalizeConfig } from './templates';
 
 export interface Backend {
   mode: 'firebase' | 'local';
@@ -40,9 +40,9 @@ const write = (p: Project[]) => {
 const CKEY = 'tracker.config.v1';
 const readConfig = (): Config => {
   try {
-    return { ...defaultConfig(), ...JSON.parse(localStorage.getItem(CKEY) || '{}') };
+    return normalizeConfig(JSON.parse(localStorage.getItem(CKEY) || '{}'));
   } catch {
-    return defaultConfig();
+    return normalizeConfig({});
   }
 };
 
@@ -122,7 +122,7 @@ export async function loadBackend(): Promise<Backend> {
     save: (u, p) => fs.setDoc(fs.doc(col(u), p.id), clean(p)),
     remove: (u, id) => fs.deleteDoc(fs.doc(col(u), id)),
     subscribeConfig: (u, cb) =>
-      fs.onSnapshot(fs.doc(db, 'users', u.uid, 'meta', 'config'), (s) => cb({ ...defaultConfig(), ...(s.data() as Partial<Config>) })),
+      fs.onSnapshot(fs.doc(db, 'users', u.uid, 'meta', 'config'), (s) => cb(normalizeConfig((s.data() ?? {}) as Partial<Config>))),
     saveConfig: (u, c) => fs.setDoc(fs.doc(db, 'users', u.uid, 'meta', 'config'), clean(c)),
   };
 }
