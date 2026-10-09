@@ -12,8 +12,11 @@ export interface Stage {
   weight: number;
   /** 0–100, set by hand. Ignored when `source` is 'backlog'. */
   progress: number;
-  /** Hybrid: 'backlog' = progress is driven by the backlog items assigned to this stage. */
+  /** 'backlog' = progress is driven by the tasks / backlog items assigned to this phase. */
   source?: 'manual' | 'backlog';
+  ownerId?: string;
+  start?: string; // yyyy-mm-dd
+  due?: string;
 }
 
 export interface LogEntry {
@@ -37,8 +40,11 @@ export interface Item {
   points: number;
   status: ItemStatus;
   sprintId?: string;
-  stageId?: string; // hybrid: which phase this work belongs to
+  stageId?: string; // which phase this work belongs to
   doneAt?: number;
+  assigneeId?: string;
+  due?: string; // yyyy-mm-dd
+  estimateHours?: number;
 }
 
 export interface Sprint {
@@ -57,8 +63,36 @@ export interface Raid {
   probability: number; // 1–5
   impact: number; // 1–5
   status: 'open' | 'mitigating' | 'closed';
-  owner: string;
+  owner: string; // free-text name (kept for older entries)
+  ownerId?: string;
   response: string;
+}
+
+export interface Member {
+  id: string;
+  name: string;
+  email?: string;
+  role?: string;
+  /** Cost per hour, used to cost logged time. Same currency label as the rest of the app. */
+  rate?: number;
+}
+
+export interface Expense {
+  id: string;
+  date: string; // yyyy-mm-dd
+  description: string;
+  amount: number;
+  category: string;
+  stageId?: string;
+}
+
+export interface TimeEntry {
+  id: string;
+  date: string; // yyyy-mm-dd
+  hours: number;
+  memberId?: string;
+  note: string;
+  itemId?: string; // the task it was spent on
 }
 
 export interface Project {
@@ -77,12 +111,15 @@ export interface Project {
   budget?: number; // budget at completion
   actualCost?: number;
   healthOverride?: Health;
+  ownerId?: string;
   notes: string;
   fields: Field[]; // any custom details: vendor, container no., budget…
   stages: Stage[];
   backlog: Item[];
   sprints: Sprint[];
   risks: Raid[];
+  expenses: Expense[];
+  time: TimeEntry[];
   log: LogEntry[];
   createdAt: number;
   updatedAt: number;
@@ -106,6 +143,9 @@ export interface Config {
   currency: string;
   categories: string[];
   templates: Template[];
+  team: Member[];
+  /** Items due within this many days appear in reminders. */
+  reminderDays: number;
 }
 
 export interface User {

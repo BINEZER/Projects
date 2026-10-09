@@ -1,4 +1,4 @@
-import type { Health, Item, Kind, Method, Project, Raid, Sprint, Stage } from '../types';
+import type { Health, Item, Kind, Member, Method, Project, Raid, Sprint, Stage } from '../types';
 import { daysLeft, totalWeight } from './progress';
 
 export const KIND_LABEL: Record<Kind, string> = { portfolio: 'Portfolio', program: 'Program', project: 'Project' };
@@ -12,7 +12,7 @@ export function normalize(p: Partial<Project> & { id: string }): Project {
     kind: p.kind ?? 'project',
     method: p.method ?? 'traditional',
     fields: p.fields ?? [], stages: p.stages ?? [], backlog: p.backlog ?? [], sprints: p.sprints ?? [],
-    risks: p.risks ?? [], log: p.log ?? [],
+    risks: p.risks ?? [], expenses: p.expenses ?? [], time: p.time ?? [], log: p.log ?? [],
   } as Project;
 }
 
@@ -80,6 +80,15 @@ export const riskScore = (r: Raid) => r.probability * r.impact;
 export const isLive = (r: Raid) => r.status !== 'closed' && (r.type === 'risk' || r.type === 'issue');
 export const scoreTone = (s: number) => (s >= 15 ? 'bad' : s >= 10 ? 'warn' : 'ok');
 
+// ---------- costs & time ----------
+export const hoursLogged = (p: Project) => p.time.reduce((s, t) => s + Math.max(0, t.hours || 0), 0);
+export const hoursEstimated = (p: Project) => p.backlog.reduce((s, i) => s + Math.max(0, i.estimateHours || 0), 0);
+export const expenseTotal = (p: Project) => p.expenses.reduce((s, e) => s + Math.max(0, e.amount || 0), 0);
+export const laborCost = (p: Project, members: Member[]) =>
+  p.time.reduce((s, t) => s + Math.max(0, t.hours || 0) * (members.find((m) => m.id === t.memberId)?.rate ?? 0), 0);
+/** Everything spent: lump-sum "other costs" + expense ledger + logged time at each person's rate. */
+export const spentOf = (p: Project, members: Member[]) => Math.max(0, p.actualCost ?? 0) + expenseTotal(p) + laborCost(p, members);
+
 // ---------- rollups ----------
 export interface Metrics {
   progress: number;
@@ -93,6 +102,8 @@ export interface Metrics {
   health: Health;
   riskScore: number;
   openRisks: number;
+  hours: number;
+  estHours: number;
   children: Project[];
 }
 
@@ -118,7 +129,7 @@ function autoHealth(p: Project, m: Omit<Metrics, 'health'>): Health {
 }
 
 /** Metrics for every item; portfolios and programs roll up their children. */
-export function buildMetrics(projects: Project[]): Map<string, Metrics> {
+export function buildMetrics(projects: Project[], members: Member[] = []): Map<string, Metrics> {
   const byId = new Map(projects.map((p) => [p.id, p]));
   const kids = new Map<string, Project[]>();
   projects.forEach((p) => {
@@ -149,7 +160,8 @@ export function buildMetrics(projects: Project[]): Map<string, Metrics> {
         progress, planned: withPlan.length ? pv / withPlan.reduce((s, x) => s + w(x.c), 0) : null,
         spi: pv > 0 ? ev / pv : null, bac, ac, ev: evm, cpi: ac > 0 && bac > 0 ? evm / ac : null,
         riskScore: Math.max(0, ...live.map(riskScore), ...cm.map((x) => x.m.riskScore)),
-        openRisks: live.length + cm.reduce((s, x) => s + x.m.openRisks, 0), children,
+        openRisks: live.length + cm.reduce((s, x) => s + x.m.openRisks, 0), hours: hoursLogged(p) + cm.reduce((s, x) => s + x.m.hours, 0),
+        estHours: hoursEstimated(p) + cm.reduce((s, x) => s + x.m.estHours, 0), children,
       };
       const hs = cm.filter((x) => x.c.status === 'active' && x.m.health !== 'none').map((x) => x.m.health);
       const worst = hs.reduce<Health>((a, b) => (RANK[b] > RANK[a] ? b : a), 'none');
@@ -162,10 +174,11 @@ export function buildMetrics(projects: Project[]): Map<string, Metrics> {
 
     const progress = p.status === 'done' ? 100 : ownProgress(p);
     const planned = plannedPct(p, progress);
-    const bac = Math.max(0, p.budget ?? 0), ac = Math.max(0, p.actualCost ?? 0), ev = (bac * progress) / 100;
+    const bac = Math.max(0, p.budget ?? 0), ac = spentOf(p, members), ev = (bac * progress) / 100;
     m = {
       progress, planned, spi: planned && planned > 0 ? progress / planned : null, bac, ac, ev,
-      cpi: ac > 0 && bac > 0 ? ev / ac : null, riskScore: Math.max(0, ...live.map(riskScore)), openRisks: live.length, children: [],
+      cpi: ac > 0 && bac > 0 ? ev / ac : null, riskScore: Math.max(0, ...live.map(riskScore)), openRisks: live.length,
+      hours: hoursLogged(p), estHours: hoursEstimated(p), children: [],
     };
     const r = { ...m, health: p.healthOverride && p.status === 'active' ? p.healthOverride : autoHealth(p, m) };
     out.set(p.id, r);

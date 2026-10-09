@@ -1,14 +1,14 @@
 import { useState } from 'react';
-import type { Project, Raid, RaidType } from '../types';
+import type { Member, Project, Raid, RaidType } from '../types';
 import { uid } from '../lib/progress';
 import { isLive, riskScore, scoreTone } from '../lib/pm';
-import { Icon, I, Modal } from './ui';
+import { Icon, I, MemberSelect, Modal, Who } from './ui';
 
 const TYPES: [RaidType, string][] = [['risk', 'Risk'], ['issue', 'Issue'], ['assumption', 'Assumption'], ['dependency', 'Dependency']];
 const LEVELS = [1, 2, 3, 4, 5];
 const tone = (s: number) => (s >= 15 ? 'bad' : s >= 10 ? 'warn' : s >= 5 ? '' : 'ok');
 
-function RaidForm({ r, onSave, onDelete, onClose }: { r: Raid; onSave: (r: Raid) => void; onDelete?: () => void; onClose: () => void }) {
+function RaidForm({ r, team, onSave, onDelete, onClose }: { r: Raid; team: Member[]; onSave: (r: Raid) => void; onDelete?: () => void; onClose: () => void }) {
   const [x, setX] = useState(r);
   const scored = x.type === 'risk' || x.type === 'issue';
   return (
@@ -26,7 +26,8 @@ function RaidForm({ r, onSave, onDelete, onClose }: { r: Raid; onSave: (r: Raid)
             <label className="f" style={{ flex: 1 }}>Impact (1 minor – 5 severe)<select value={x.impact} onChange={(e) => setX({ ...x, impact: +e.target.value })}>{LEVELS.map((n) => <option key={n}>{n}</option>)}</select></label>
           </div>
         )}
-        <label className="f">Owner<input type="text" value={x.owner} onChange={(e) => setX({ ...x, owner: e.target.value })} /></label>
+        {team.length > 0 && <label className="f">Owner<MemberSelect members={team} value={x.ownerId} onChange={(id) => setX({ ...x, ownerId: id })} empty="No owner" /></label>}
+        <label className="f">{team.length ? 'Or name (outside your team)' : 'Owner'}<input type="text" value={x.owner} onChange={(e) => setX({ ...x, owner: e.target.value })} /></label>
         <label className="f">Response / mitigation<textarea value={x.response} onChange={(e) => setX({ ...x, response: e.target.value })} style={{ minHeight: 70 }} /></label>
         <div className="row spread">{onDelete ? <button className="btn danger" onClick={onDelete}>Delete</button> : <span />}
           <div className="row"><button className="btn ghost" onClick={onClose}>Cancel</button><button className="btn primary" disabled={!x.title.trim()} onClick={() => onSave(x)}>Save</button></div></div>
@@ -36,7 +37,7 @@ function RaidForm({ r, onSave, onDelete, onClose }: { r: Raid; onSave: (r: Raid)
 }
 
 /** RAID log: Risks, Assumptions, Issues, Dependencies, with a probability × impact heat map. */
-export function RaidLog({ p, onSave }: { p: Project; onSave: (p: Project) => void }) {
+export function RaidLog({ p, team, onSave }: { p: Project; team: Member[]; onSave: (p: Project) => void }) {
   const [edit, setEdit] = useState<{ r: Raid; isNew: boolean } | null>(null);
   const [showClosed, setShowClosed] = useState(false);
   const blank = (): Raid => ({ id: uid(), type: 'risk', title: '', probability: 3, impact: 3, status: 'open', owner: '', response: '' });
@@ -54,7 +55,7 @@ export function RaidLog({ p, onSave }: { p: Project; onSave: (p: Project) => voi
           <div key={r.id} className="row spread" style={{ padding: '10px 0', borderTop: '1px solid var(--line)', opacity: r.status === 'closed' ? 0.55 : 1, alignItems: 'flex-start' }}>
             <div style={{ minWidth: 0 }}>
               <div><span className="tag" style={{ marginRight: 6 }}>{TYPES.find(([k]) => k === r.type)?.[1]}</span><b>{r.title}</b></div>
-              <div className="small muted">{r.status}{r.owner && ` · ${r.owner}`}{r.response && ` · ${r.response}`}</div>
+              <div className="small muted row" style={{ gap: 6 }}>{r.status}<Who members={team} id={r.ownerId} />{r.owner && ` · ${r.owner}`}{r.response && ` · ${r.response}`}</div>
             </div>
             <div className="row no-print" style={{ gap: 4, flex: 'none' }}>
               {(r.type === 'risk' || r.type === 'issue') && <span className={`tag ${tone(riskScore(r))}`} title="Probability × impact">{riskScore(r)}</span>}
@@ -74,7 +75,7 @@ export function RaidLog({ p, onSave }: { p: Project; onSave: (p: Project) => voi
         </div>
         <div className="row spread small faint" style={{ marginTop: 6 }}><span>Probability →</span><span>Impact ↑</span></div>
       </div>
-      {edit && <RaidForm r={edit.r} onClose={() => setEdit(null)} onSave={(r) => save(r, edit.isNew)} onDelete={edit.isNew ? undefined : () => { onSave({ ...p, risks: p.risks.filter((x) => x.id !== edit.r.id) }); setEdit(null); }} />}
+      {edit && <RaidForm r={edit.r} team={team} onClose={() => setEdit(null)} onSave={(r) => save(r, edit.isNew)} onDelete={edit.isNew ? undefined : () => { onSave({ ...p, risks: p.risks.filter((x) => x.id !== edit.r.id) }); setEdit(null); }} />}
     </div>
   );
 }

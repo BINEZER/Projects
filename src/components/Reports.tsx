@@ -1,10 +1,11 @@
 import { Fragment, useMemo, useState } from 'react';
-import type { Project } from '../types';
+import type { Member, Project } from '../types';
 import type { Metrics } from '../lib/pm';
 import { HEALTH_LABEL, KIND_LABEL, METHOD_LABEL, stageProgress } from '../lib/pm';
 import { currentStage, isOverdue } from '../lib/progress';
-import { backlogCSV, download, projectsCSV, risksCSV, stagesCSV, stamp } from '../lib/exporters';
-import { HealthDot, Icon, I, Kpi, Pill, idx, num } from './ui';
+import { backlogCSV, download, expensesCSV, projectsCSV, risksCSV, stagesCSV, stamp, timeCSV } from '../lib/exporters';
+
+import { HealthDot, Icon, I, Kpi, Pill, Who, idx, num } from './ui';
 
 const COLORS = ['var(--accent)', 'var(--warn)', 'var(--ink-3)'];
 const HCOL = { green: 'var(--accent)', amber: 'var(--warn)', red: 'var(--bad)' };
@@ -30,11 +31,12 @@ function HBars({ rows }: { rows: { name: string; v: number; label?: string }[] }
   ))}</div>;
 }
 
-export function Reports({ projects, metrics, categories, workspace, currency }: { projects: Project[]; metrics: Map<string, Metrics>; categories: string[]; workspace: string; currency: string }) {
+export function Reports({ projects, metrics, categories, workspace, currency, team }: { projects: Project[]; metrics: Map<string, Metrics>; categories: string[]; workspace: string; currency: string; team: Member[] }) {
   const [cat, setCat] = useState('All');
   const [status, setStatus] = useState('all');
   const [level, setLevel] = useState('all');
   const [method, setMethod] = useState('all');
+  const [owner, setOwner] = useState('all');
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
   const [title, setTitle] = useState('Project report');
@@ -43,7 +45,7 @@ export function Reports({ projects, metrics, categories, workspace, currency }: 
 
   const list = useMemo(() => projects.filter((p) =>
     (cat === 'All' || p.category === cat) && (status === 'all' || p.status === status) && (level === 'all' || p.kind === level) &&
-    (method === 'all' || (p.kind === 'project' && p.method === method)) && (!from || (p.due ?? '') >= from) && (!to || (p.due ?? '9999') <= to)), [projects, cat, status, level, method, from, to]);
+    (method === 'all' || (p.kind === 'project' && p.method === method)) && (owner === 'all' || p.ownerId === owner) && (!from || (p.due ?? '') >= from) && (!to || (p.due ?? '9999') <= to)), [projects, cat, status, level, method, owner, from, to]);
 
   const m = useMemo(() => {
     const leaves = list.filter((p) => p.kind === 'project'); // money is summed at project level only, so nothing is counted twice
@@ -75,10 +77,12 @@ export function Reports({ projects, metrics, categories, workspace, currency }: 
       <div className="page-head">
         <div><h1>Reports</h1><div className="muted">Filter, then print or export exactly what you see.</div></div>
         <div className="row wrap no-print">
-          <button className="btn" onClick={() => download(`projects-${stamp()}.csv`, projectsCSV(list, metrics, projects), 'text/csv')}><Icon d={I.download} size={15} /> Projects CSV</button>
+          <button className="btn" onClick={() => download(`projects-${stamp()}.csv`, projectsCSV(list, metrics, projects, team), 'text/csv')}><Icon d={I.download} size={15} /> Projects CSV</button>
           <button className="btn" onClick={() => download(`stages-${stamp()}.csv`, stagesCSV(list), 'text/csv')}><Icon d={I.download} size={15} /> Phases CSV</button>
-          <button className="btn" onClick={() => download(`backlog-${stamp()}.csv`, backlogCSV(list), 'text/csv')}><Icon d={I.download} size={15} /> Backlog CSV</button>
+          <button className="btn" onClick={() => download(`backlog-${stamp()}.csv`, backlogCSV(list, team), 'text/csv')}><Icon d={I.download} size={15} /> Backlog CSV</button>
           <button className="btn" onClick={() => download(`risks-${stamp()}.csv`, risksCSV(list), 'text/csv')}><Icon d={I.download} size={15} /> Risks CSV</button>
+          <button className="btn" onClick={() => download(`expenses-${stamp()}.csv`, expensesCSV(list), 'text/csv')}><Icon d={I.download} size={15} /> Expenses CSV</button>
+          <button className="btn" onClick={() => download(`time-${stamp()}.csv`, timeCSV(list, team), 'text/csv')}><Icon d={I.download} size={15} /> Time CSV</button>
           <button className="btn primary" onClick={() => window.print()}><Icon d={I.print} size={15} /> Print / PDF</button>
         </div>
       </div>
@@ -88,6 +92,7 @@ export function Reports({ projects, metrics, categories, workspace, currency }: 
           <label className="f" style={{ flex: '1 1 200px' }}>Report title<input type="text" value={title} onChange={(e) => setTitle(e.target.value)} /></label>
           <label className="f">Level<select style={sel} value={level} onChange={(e) => setLevel(e.target.value)}><option value="all">All</option><option value="portfolio">Portfolios</option><option value="program">Programs</option><option value="project">Projects</option></select></label>
           <label className="f">Method<select style={sel} value={method} onChange={(e) => setMethod(e.target.value)}><option value="all">All</option><option value="traditional">Traditional</option><option value="agile">Agile</option><option value="hybrid">Hybrid</option></select></label>
+          {team.length > 0 && <label className="f">Owner<select style={sel} value={owner} onChange={(e) => setOwner(e.target.value)}><option value="all">Anyone</option>{team.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</select></label>}
           <label className="f">Category<select style={sel} value={cat} onChange={(e) => setCat(e.target.value)}><option>All</option>{categories.map((x) => <option key={x}>{x}</option>)}</select></label>
           <label className="f">Status<select style={sel} value={status} onChange={(e) => setStatus(e.target.value)}><option value="all">All</option><option value="active">Active</option><option value="paused">Paused</option><option value="done">Done</option></select></label>
           <label className="f">Due from<input type="date" value={from} onChange={(e) => setFrom(e.target.value)} /></label>
@@ -120,16 +125,16 @@ export function Reports({ projects, metrics, categories, workspace, currency }: 
 
         <div className="card" style={{ overflowX: 'auto' }}>
           <h2 style={{ marginBottom: 8 }}>Detail</h2>
-          <table className="t"><thead><tr><th>Name</th><th>Level</th><th>Category</th><th>Health</th><th>Due</th><th>Progress</th><th>SPI</th><th>CPI</th><th>Now</th></tr></thead>
+          <table className="t"><thead><tr><th>Name</th><th>Level</th><th>Owner</th><th>Health</th><th>Due</th><th>Progress</th><th>SPI</th><th>CPI</th><th>Hours</th><th>Now</th></tr></thead>
             <tbody>{list.map((p) => { const x = M(p); return (
               <Fragment key={p.id}>
                 <tr><td><a href={`#/p/${p.id}`} style={{ color: 'inherit', fontWeight: 600 }}>{p.title}</a>{p.ref && <div className="small faint">{p.ref}</div>}</td>
-                  <td>{KIND_LABEL[p.kind]}{p.kind === 'project' && <div className="small faint">{METHOD_LABEL[p.method]}</div>}</td><td><Pill text={p.category} /></td>
+                  <td>{KIND_LABEL[p.kind]}{p.kind === 'project' && <div className="small faint">{METHOD_LABEL[p.method]}</div>}</td><td>{team.length ? <Who members={team} id={p.ownerId} name /> : <Pill text={p.category} />}</td>
                   <td>{p.status === 'active' ? <HealthDot h={x.health} label /> : p.status}</td>
-                  <td style={isOverdue(p) ? { color: 'var(--bad)' } : undefined}>{p.due ?? '—'}</td><td><b>{Math.round(x.progress)}%</b></td><td>{idx(x.spi)}</td><td>{idx(x.cpi)}</td>
+                  <td style={isOverdue(p) ? { color: 'var(--bad)' } : undefined}>{p.due ?? '—'}</td><td><b>{Math.round(x.progress)}%</b></td><td>{idx(x.spi)}</td><td>{idx(x.cpi)}</td><td>{x.hours ? `${Math.round(x.hours * 10) / 10}${x.estHours ? ` / ${x.estHours}` : ''}h` : '—'}</td>
                   <td>{p.kind !== 'project' ? `${x.children.length} inside` : p.method === 'agile' ? 'Backlog' : currentStage(p.stages)?.name ?? '—'}</td></tr>
-                {detail && p.kind === 'project' && p.stages.length > 0 && <tr><td colSpan={9} className="small muted" style={{ borderTop: 0, paddingTop: 0 }}>{p.stages.map((s) => `${s.name} (${s.weight}w · ${Math.round(stageProgress(s, p))}%)`).join('  →  ')}</td></tr>}
-                {detail && p.kind === 'project' && p.backlog.length > 0 && <tr><td colSpan={9} className="small muted" style={{ borderTop: 0, paddingTop: 0 }}>Backlog: {p.backlog.filter((i) => i.status === 'done').length}/{p.backlog.length} items done · {p.backlog.filter((i) => i.status === 'done').reduce((s, i) => s + i.points, 0)}/{p.backlog.reduce((s, i) => s + i.points, 0)} pts</td></tr>}
+                {detail && p.kind === 'project' && p.stages.length > 0 && <tr><td colSpan={10} className="small muted" style={{ borderTop: 0, paddingTop: 0 }}>{p.stages.map((s) => `${s.name} (${s.weight}w · ${Math.round(stageProgress(s, p))}%)`).join('  →  ')}</td></tr>}
+                {detail && p.kind === 'project' && p.backlog.length > 0 && <tr><td colSpan={10} className="small muted" style={{ borderTop: 0, paddingTop: 0 }}>Backlog: {p.backlog.filter((i) => i.status === 'done').length}/{p.backlog.length} items done · {p.backlog.filter((i) => i.status === 'done').reduce((s, i) => s + i.points, 0)}/{p.backlog.reduce((s, i) => s + i.points, 0)} pts</td></tr>}
               </Fragment>); })}</tbody></table>
           {!list.length && <p className="muted">Nothing matches these filters.</p>}
         </div>

@@ -8,8 +8,12 @@ import { ProjectForm } from './ProjectForm';
 import { Agile } from './Agile';
 import { RaidLog } from './Raid';
 import { Money } from './Money';
+import { Tasks } from './Tasks';
+import { CostsTime } from './CostsTime';
+import { Gantt, type GRow } from './Gantt';
+import { detailRows } from './Timeline';
 import { Tree } from './Tree';
-import { HealthDot, Icon, I, Kpi, KindTag, MethodTag, Pill, Ring, idx } from './ui';
+import { HealthDot, Icon, I, Kpi, KindTag, MethodTag, Pill, Ring, Who, idx } from './ui';
 
 export function ProjectDetail({ project: p, all, metrics, config, categories, onSave, onDelete, onBack, onCreate }: {
   project: Project; all: Project[]; metrics: Map<string, Metrics>; config: Config; categories: string[];
@@ -18,11 +22,17 @@ export function ProjectDetail({ project: p, all, metrics, config, categories, on
 }) {
   const m = metrics.get(p.id)!;
   const container = p.kind !== 'project';
+  const team = config.team;
+  const openTasks = p.backlog.filter((i) => i.status !== 'done').length;
   const tabs: [string, string][] = container ? [['contents', 'Contents']] : [
     ...(p.method !== 'agile' ? [['plan', 'Phases'] as [string, string]] : []),
+    ...(p.method === 'traditional' ? [['tasks', `Tasks${openTasks ? ` (${openTasks})` : ''}`] as [string, string]] : []),
     ...(p.method !== 'traditional' ? [['agile', p.method === 'agile' ? 'Backlog & sprints' : 'Agile work'] as [string, string]] : []),
   ];
-  tabs.push(['risks', `Risks${m.openRisks ? ` (${m.openRisks})` : ''}`], ['money', 'Schedule & budget'], ['activity', 'Activity']);
+  tabs.push(['timeline', 'Timeline']);
+  tabs.push(['risks', `Risks${m.openRisks ? ` (${m.openRisks})` : ''}`]);
+  if (!container) tabs.push(['costs', 'Costs & time']);
+  tabs.push(['money', 'Schedule & budget'], ['activity', 'Activity']);
   const [tab, setTab] = useState(tabs[0][0]);
   const active = tabs.some(([k]) => k === tab) ? tab : tabs[0][0];
 
@@ -33,6 +43,18 @@ export function ProjectDetail({ project: p, all, metrics, config, categories, on
   const cur = currentStage(p.stages);
   const log = (text: string) => ({ id: uid(), at: Date.now(), text });
   const parent = all.find((x) => x.id === p.parentId);
+  const timelineRows: GRow[] = (() => {
+    const self: GRow = { id: p.id, label: p.title, indent: 0, start: p.start, due: p.due, progress: m.progress, tone: m.health === 'none' ? 'accent' : m.health, kind: p.kind, who: <Who members={team} id={p.ownerId} /> };
+    if (!container) return [self, ...detailRows(p, team, 1)];
+    const rows: GRow[] = [self];
+    const walk = (id: string, indent: number) => all.filter((c) => c.parentId === id && c.id !== id).forEach((c) => {
+      const cm = metrics.get(c.id)!;
+      rows.push({ id: c.id, label: c.title, indent, start: c.start, due: c.due, progress: cm.progress, tone: cm.health === 'none' ? 'accent' : cm.health, kind: c.kind, href: `#/p/${c.id}`, who: <Who members={team} id={c.ownerId} /> });
+      walk(c.id, indent + 1);
+    });
+    walk(p.id, 1);
+    return rows;
+  })();
 
   /** Apply stage changes; auto-complete / reopen the project and log it. */
   const setStages = (stages: Stage[], text?: string) => {
@@ -52,7 +74,7 @@ export function ProjectDetail({ project: p, all, metrics, config, categories, on
     const now = Date.now();
     location.hash = '#/';
     onSave({ ...p, id: uid(), title: `${p.title} (copy)`, status: 'active', completedAt: undefined, createdAt: now, log: [log('Duplicated')],
-      stages: p.stages.map((s) => ({ ...s, id: uid(), progress: 0 })), backlog: p.backlog.map((i) => ({ ...i, id: uid(), status: 'todo', sprintId: undefined, stageId: undefined, doneAt: undefined })), sprints: [], risks: p.risks.map((r) => ({ ...r, id: uid() })) });
+      stages: p.stages.map((s) => ({ ...s, id: uid(), progress: 0 })), backlog: p.backlog.map((i) => ({ ...i, id: uid(), status: 'todo', sprintId: undefined, stageId: undefined, doneAt: undefined })), sprints: [], risks: p.risks.map((r) => ({ ...r, id: uid() })), expenses: [], time: [] });
   };
   const confirmDelete = () => window.confirm(`Delete “${p.title}”?${container ? ' Items inside it are kept and moved up a level.' : ''} This can’t be undone.`) && onDelete();
 
@@ -74,7 +96,7 @@ export function ProjectDetail({ project: p, all, metrics, config, categories, on
           <div className="row wrap"><KindTag kind={p.kind} />{!container && <MethodTag method={p.method} />}<Pill text={p.category} /><span className={`tag ${p.status === 'done' ? 'ok' : p.status === 'paused' ? 'warn' : ''}`}>{p.status}</span>{p.due && <span className={`tag ${isOverdue(p) ? 'bad' : ''}`}>{dueLabel(p.due)}</span>}</div>
           <h1 style={{ margin: '8px 0 2px' }}>{p.title}</h1>
           <div className="muted">
-            {parent && <>In <a href={`#/p/${parent.id}`}>{parent.title}</a> · </>}{p.ref && <>Ref {p.ref} · </>}
+            {p.ownerId && <><Who members={team} id={p.ownerId} name /> · </>}{parent && <>In <a href={`#/p/${parent.id}`}>{parent.title}</a> · </>}{p.ref && <>Ref {p.ref} · </>}
             {container ? `${m.children.length} item${m.children.length === 1 ? '' : 's'} inside` : p.status === 'done' ? 'Completed' : p.method === 'agile' ? `${METHOD_LABEL.agile} delivery` : cur ? `Now: ${cur.name}` : 'Add phases to start tracking'}
           </div>
         </div>
@@ -102,16 +124,16 @@ export function ProjectDetail({ project: p, all, metrics, config, categories, on
           <div className="row spread"><h2>Phases</h2>
             <button className="btn sm no-print" onClick={() => setEditStages(!editStages)}>{editStages ? 'Done' : <><Icon d={I.edit} size={14} /> Edit phases & weights</>}</button></div>
           {editStages ? (
-            <div style={{ marginTop: 10 }}><StageEditor stages={p.stages} make={newStage} onChange={(s) => setStages(s)} allowBacklog={p.method === 'hybrid'} /></div>
+            <div style={{ marginTop: 10 }}><StageEditor stages={p.stages} make={newStage} onChange={(s) => setStages(s)} allowBacklog team={team} /></div>
           ) : p.stages.length === 0 ? <p className="muted">No phases yet. Use “Edit phases” to add some.</p> : p.stages.map((s) => {
             const pr = stageProgress(s, p);
             const driven = s.source === 'backlog';
             return (
               <div key={s.id} className={`stage ${cur?.id === s.id ? 'now' : ''}`}>
                 <button className={`check ${pr >= 100 ? 'done' : pr > 0 ? 'part' : ''}`} style={{ ['--p' as string]: pr }} aria-label={`Toggle ${s.name}`} disabled={driven} onClick={() => setProgress(s.id, s.progress === 100 ? 0 : 100)}><Icon d={I.check} size={15} /></button>
-                <div><div className={`name ${pr >= 100 ? 'done' : ''}`}>{s.name || 'Untitled'}</div><div className="small faint">{Math.round(share(s, p.stages))}% of project{driven && ' · driven by backlog'}</div></div>
+                <div><div className={`name ${pr >= 100 ? 'done' : ''}`}>{s.name || 'Untitled'} <Who members={team} id={s.ownerId} /></div><div className="small faint">{Math.round(share(s, p.stages))}% of project{driven && ' · driven by tasks'}{s.due && ` · due ${s.due}`}</div></div>
                 <div className="slider row no-print" style={{ gap: 8 }}>
-                  {driven ? <span className="small muted">From agile work: {Math.round(pr)}%</span> : <>
+                  {driven ? <span className="small muted">From tasks: {Math.round(pr)}%</span> : <>
                     <input type="range" min={0} max={100} step={5} value={s.progress} aria-label={`${s.name} progress`} onChange={(e) => setStages(p.stages.map((x) => (x.id === s.id ? { ...x, progress: +e.target.value } : x)))} />
                     <span className="small muted" style={{ width: 34, textAlign: 'right' }}>{s.progress}%</span></>}
                 </div>
@@ -121,8 +143,11 @@ export function ProjectDetail({ project: p, all, metrics, config, categories, on
         </div>
       )}
 
-      {active === 'agile' && <Agile p={p} onSave={onSave} log={log} />}
-      {active === 'risks' && <RaidLog p={p} onSave={onSave} />}
+      {active === 'tasks' && <Tasks p={p} team={team} onSave={onSave} log={log} />}
+      {active === 'agile' && <Agile p={p} team={team} onSave={onSave} log={log} />}
+      {active === 'timeline' && <div className="card" style={{ padding: 0, overflow: 'hidden' }}><Gantt rows={timelineRows} pxPerDay={container ? 5 : 8} labelWidth={220} /></div>}
+      {active === 'risks' && <RaidLog p={p} team={team} onSave={onSave} />}
+      {active === 'costs' && <CostsTime p={p} team={team} currency={config.currency} onSave={onSave} />}
       {active === 'money' && <Money p={p} m={m} currency={config.currency} onSave={onSave} />}
 
       {active === 'activity' && (

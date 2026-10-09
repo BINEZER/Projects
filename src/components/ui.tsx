@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import type { Health, Kind, Method } from '../types';
+import type { Health, Kind, Member, Method } from '../types';
 import { hueOf } from '../lib/progress';
 import { HEALTH_LABEL, KIND_LABEL, METHOD_LABEL } from '../lib/pm';
 
@@ -20,6 +20,8 @@ export const I = {
   edit: 'M4 20h4L19 9l-4-4L4 16v4z',
   download: 'M12 4v11m0 0l-4-4m4 4l4-4M5 20h14',
   print: 'M7 9V4h10v5M7 17H5v-6h14v6h-2M7 14h10v6H7z',
+  bell: 'M18 8a6 6 0 10-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 01-3.4 0',
+  clock: 'M12 7v5l3 2M12 3a9 9 0 100 18 9 9 0 000-18z',
 };
 
 export const Pill = ({ text }: { text: string }) => (
@@ -72,3 +74,27 @@ export const MethodTag = ({ method }: { method: Method }) => <span className={`t
 
 export const num = (n: number) => Math.round(n).toLocaleString();
 export const idx = (n: number | null) => (n === null ? '—' : n.toFixed(2));
+
+
+/** Small initials avatar for a team member. */
+export function Who({ members, id, name = false }: { members: Member[]; id?: string; name?: boolean }) {
+  const m = members.find((x) => x.id === id);
+  if (!m) return null;
+  const ini = (m.name.split(/\s+/).filter((w) => /^\p{L}/u.test(w)).map((w) => w[0]).join('') || m.name[0] || '?').slice(0, 2).toUpperCase();
+  return (
+    <span className="who" title={m.name}>
+      <i style={{ ['--h' as string]: hueOf(m.name) }}>{ini}</i>
+      {name && <span className="small">{m.name}</span>}
+    </span>
+  );
+}
+
+export function MemberSelect({ members, value, onChange, empty = 'Unassigned', label }: { members: Member[]; value?: string; onChange: (id?: string) => void; empty?: string; label?: string }) {
+  return (
+    <select value={value ?? ''} onChange={(e) => onChange(e.target.value || undefined)} aria-label={label ?? 'Person'}>
+      <option value="">{empty}</option>
+      {members.map((m) => <option key={m.id} value={m.id}>{m.name}{m.role ? ` · ${m.role}` : ''}</option>)}
+      {value && !members.some((m) => m.id === value) && <option value={value}>(removed member)</option>}
+    </select>
+  );
+}

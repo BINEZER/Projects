@@ -1,8 +1,9 @@
 import { useState } from 'react';
-import type { Item, ItemStatus, Project, Sprint } from '../types';
+import type { Item, ItemStatus, Member, Project, Sprint } from '../types';
 import { uid } from '../lib/progress';
 import { activeSprint, addDays, backlogProgress, burndown, isoDay, sprintPoints, velocity } from '../lib/pm';
-import { Icon, I, Kpi, Modal } from './ui';
+import { Icon, I, Kpi, Modal, Who } from './ui';
+import { TaskForm } from './Tasks';
 
 const COLS: [ItemStatus, string][] = [['todo', 'To do'], ['doing', 'In progress'], ['done', 'Done']];
 const ORDER: ItemStatus[] = ['todo', 'doing', 'done'];
@@ -60,29 +61,8 @@ function SprintForm({ sprint, onSave, onDelete, onClose }: { sprint: Sprint; onS
   );
 }
 
-function ItemForm({ item, p, onSave, onDelete, onClose }: { item: Item; p: Project; onSave: (i: Item) => void; onDelete: () => void; onClose: () => void }) {
-  const [i, setI] = useState(item);
-  const phases = p.stages.filter((s) => s.source === 'backlog');
-  return (
-    <Modal onClose={onClose}>
-      <div className="stack">
-        <h2>Edit item</h2>
-        <label className="f">Title<input type="text" autoFocus value={i.title} onChange={(e) => setI({ ...i, title: e.target.value })} /></label>
-        <div className="row">
-          <label className="f" style={{ flex: 1 }}>Story points<input type="number" min={0} value={i.points} onChange={(e) => setI({ ...i, points: Math.max(0, +e.target.value || 0) })} /></label>
-          <label className="f" style={{ flex: 1 }}>Status<select value={i.status} onChange={(e) => setI({ ...i, status: e.target.value as ItemStatus })}>{COLS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select></label>
-        </div>
-        <label className="f">Sprint<select value={i.sprintId ?? ''} onChange={(e) => setI({ ...i, sprintId: e.target.value || undefined })}><option value="">Backlog (not scheduled)</option>{p.sprints.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select></label>
-        {phases.length > 0 && <label className="f">Phase<select value={i.stageId ?? ''} onChange={(e) => setI({ ...i, stageId: e.target.value || undefined })}><option value="">None</option>{phases.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select></label>}
-        <div className="row spread"><button className="btn danger" onClick={onDelete}>Delete item</button>
-          <div className="row"><button className="btn ghost" onClick={onClose}>Cancel</button><button className="btn primary" disabled={!i.title.trim()} onClick={() => onSave(i)}>Save</button></div></div>
-      </div>
-    </Modal>
-  );
-}
-
 /** Backlog, sprint board, burndown and velocity: the agile side of a project. */
-export function Agile({ p, onSave, log }: { p: Project; onSave: (p: Project) => void; log: (text: string) => Project['log'][number] }) {
+export function Agile({ p, team, onSave, log }: { p: Project; team: Member[]; onSave: (p: Project) => void; log: (text: string) => Project['log'][number] }) {
   const cur = activeSprint(p);
   const [scope, setScope] = useState<string>(cur?.id ?? 'all');
   const [title, setTitle] = useState('');
@@ -162,7 +142,7 @@ export function Agile({ p, onSave, log }: { p: Project; onSave: (p: Project) => 
                     <span style={{ fontWeight: 560 }}>{i.title}</span><span className="tag">{i.points}</span>
                   </div>
                   <div className="row spread small faint" style={{ marginTop: 6 }}>
-                    <span>{p.sprints.find((s) => s.id === i.sprintId)?.name ?? 'Backlog'}{i.stageId && phases.length > 0 && ` · ${p.stages.find((s) => s.id === i.stageId)?.name ?? ''}`}</span>
+                    <span className="row" style={{ gap: 6 }}><Who members={team} id={i.assigneeId} />{p.sprints.find((s) => s.id === i.sprintId)?.name ?? 'Backlog'}{i.stageId && phases.length > 0 && ` · ${p.stages.find((s) => s.id === i.stageId)?.name ?? ''}`}{i.due && ` · due ${i.due.slice(5)}`}</span>
                     <span className="row no-print" style={{ gap: 0 }}>
                       {ORDER.indexOf(k) > 0 && <button className="btn ghost sm" aria-label="Move back" onClick={() => setStatus(i, ORDER[ORDER.indexOf(k) - 1])}><Icon d={I.back} size={13} /></button>}
                       {ORDER.indexOf(k) < 2 && <button className="btn ghost sm" aria-label="Move forward" onClick={() => setStatus(i, ORDER[ORDER.indexOf(k) + 1])}><Icon d={I.fwd} size={13} /></button>}
@@ -185,7 +165,7 @@ export function Agile({ p, onSave, log }: { p: Project; onSave: (p: Project) => 
         <div className="card"><h2 style={{ marginBottom: 10 }}>Velocity <span className="faint small">(points done per sprint)</span></h2><Velocity p={p} /></div>
       </div>
 
-      {editItem && <ItemForm item={editItem} p={p} onClose={() => setEditItem(null)}
+      {editItem && <TaskForm item={editItem} p={p} team={team} onClose={() => setEditItem(null)}
         onSave={(i) => { onSave({ ...p, backlog: p.backlog.map((x) => (x.id === i.id ? { ...i, doneAt: i.status === 'done' ? x.doneAt ?? Date.now() : undefined } : x)) }); setEditItem(null); }}
         onDelete={() => { put(p.backlog.filter((x) => x.id !== editItem.id)); setEditItem(null); }} />}
       {editSprint && <SprintForm sprint={editSprint.s} onClose={() => setEditSprint(null)} onSave={(s) => saveSprint(s, editSprint.isNew)} onDelete={editSprint.isNew ? undefined : () => delSprint(editSprint.s)} />}

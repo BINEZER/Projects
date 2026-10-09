@@ -1,10 +1,11 @@
 import { totalWeight, uid } from '../lib/progress';
-import { Icon, I } from './ui';
+import type { Member } from '../types';
+import { Icon, I, MemberSelect } from './ui';
 
-type S = { id: string; name: string; weight: number; source?: 'manual' | 'backlog' };
+type S = { id: string; name: string; weight: number; source?: 'manual' | 'backlog'; ownerId?: string; start?: string; due?: string };
 
 /** Edit name / weight / order of any stage list; add and delete rows. */
-export function StageEditor<T extends S>({ stages, onChange, make, allowBacklog }: { stages: T[]; onChange: (s: T[]) => void; make: () => T; allowBacklog?: boolean }) {
+export function StageEditor<T extends S>({ stages, onChange, make, allowBacklog, team }: { stages: T[]; onChange: (s: T[]) => void; make: () => T; allowBacklog?: boolean; team?: Member[] }) {
   const total = totalWeight(stages);
   const set = (i: number, patch: Partial<S>) => onChange(stages.map((s, j) => (j === i ? { ...s, ...patch } : s)));
   const move = (i: number, d: number) => {
@@ -32,8 +33,15 @@ export function StageEditor<T extends S>({ stages, onChange, make, allowBacklog 
           {allowBacklog && (
             <label className="row small muted" style={{ gridColumn: '1 / -1', gap: 6, marginTop: -6 }}>
               <input type="checkbox" checked={s.source === 'backlog'} onChange={(e) => set(i, { source: e.target.checked ? 'backlog' : 'manual' })} />
-              Agile phase: progress comes from the backlog items assigned to it
+              Progress comes from the tasks assigned to this phase
             </label>
+          )}
+          {team && (
+            <div className="row wrap" style={{ gridColumn: '1 / -1', gap: 8, marginTop: -4 }}>
+              <label className="f" style={{ flex: '1 1 160px' }}>Owner<MemberSelect members={team} value={s.ownerId} onChange={(id) => set(i, { ownerId: id })} empty="No owner" /></label>
+              <label className="f" style={{ flex: '1 1 130px' }}>Start<input type="date" value={s.start ?? ''} onChange={(e) => set(i, { start: e.target.value || undefined })} /></label>
+              <label className="f" style={{ flex: '1 1 130px' }}>Due<input type="date" value={s.due ?? ''} onChange={(e) => set(i, { due: e.target.value || undefined })} /></label>
+            </div>
           )}
         </div>
       ))}
@@ -48,4 +56,4 @@ export function StageEditor<T extends S>({ stages, onChange, make, allowBacklog 
   );
 }
 
-export const newStage = (): { id: string; name: string; weight: number; progress: number; source?: 'manual' | 'backlog' } => ({ id: uid(), name: '', weight: 10, progress: 0 });
+export const newStage = (): { id: string; name: string; weight: number; progress: number; source?: 'manual' | 'backlog'; ownerId?: string; start?: string; due?: string } => ({ id: uid(), name: '', weight: 10, progress: 0 });
