@@ -6,6 +6,10 @@ Progress = Σ(stage weight × stage progress) ÷ Σ(weights), so weights are rel
 - **Levels** – portfolio → program → project; progress, health, budget and risk roll up the tree (set a "weight in parent" per item)
 - **Methods** – per project: **Traditional** (weighted phases), **Agile** (backlog, sprints, board, burndown, velocity) or **Hybrid** (phases, where a phase can be driven by its backlog items)
 - **Health & metrics** – automatic green/amber/red from schedule (SPI), cost (CPI), overdue dates and risks; earned-value panel; RAID log with a probability × impact heat map
+- **Team & work** – add people in Admin → Team; owners on projects/programs/phases; tasks with assignee, due date and hour estimate; a Work page with everyone's workload; a phase's progress can follow its tasks
+- **Timeline** – Gantt chart of the whole portfolio (expandable into phases, sprints, dated tasks) plus a Timeline tab on every project
+- **Costs & time** – expense ledger and time log (hourly rates per person) feed Spent, CPI and the forecast
+- **Reminders** – bell with overdue and upcoming deadlines, optional daily browser notification, and a downloadable calendar (.ics) so your calendar reminds you when the app is closed
 - **Dashboard** – KPIs, needs-attention list, filter/sort/search by level, method, category
 - **Projects** – editable stages (name, weight, order), per-stage progress, custom details, activity log (add/edit/delete), duplicate, print
 - **Reports** – filter by category/status/due range; charts; export **CSV** (projects, stages) and **Print / PDF**

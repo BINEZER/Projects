@@ -27,6 +27,8 @@ export const builtInTemplates = (): Template[] => [
 export const defaultConfig = (): Config => ({
   workspace: 'My Projects',
   currency: 'ETB',
+  team: [],
+  reminderDays: 3,
   categories: ['Personal', 'Shipment', 'IntelMotion', 'IntelTech', 'Nigist LLC', 'Tamar Trading'],
   templates: builtInTemplates(),
 });
@@ -37,6 +39,8 @@ export const normalizeConfig = (c: Partial<Config>): Config => {
   return {
     ...d, ...c,
     currency: c.currency ?? d.currency,
+    team: c.team ?? [],
+    reminderDays: c.reminderDays ?? d.reminderDays,
     templates: (c.templates ?? d.templates).map((x) => ({ ...x, method: x.method ?? 'traditional' })),
   };
 };

@@ -17,7 +17,7 @@ export function Money({ p, m, currency, onSave }: { p: Project; m: Metrics; curr
           <label className="f" style={{ flex: '1 1 140px' }}>Start date<input type="date" value={p.start ?? ''} onChange={(e) => onSave({ ...p, start: e.target.value || undefined })} /></label>
           <label className="f" style={{ flex: '1 1 140px' }}>Due date<input type="date" value={p.due ?? ''} onChange={(e) => onSave({ ...p, due: e.target.value || undefined })} /></label>
           <label className="f" style={{ flex: '1 1 140px' }}>Budget{c}<input type="number" min={0} value={p.budget ?? ''} onChange={(e) => onSave({ ...p, budget: e.target.value === '' ? undefined : Math.max(0, +e.target.value) })} /></label>
-          <label className="f" style={{ flex: '1 1 140px' }}>Actual cost so far{c}<input type="number" min={0} value={p.actualCost ?? ''} onChange={(e) => onSave({ ...p, actualCost: e.target.value === '' ? undefined : Math.max(0, +e.target.value) })} /></label>
+          <label className="f" style={{ flex: '1 1 140px' }}>Other costs (lump sum){c}<input type="number" min={0} value={p.actualCost ?? ''} onChange={(e) => onSave({ ...p, actualCost: e.target.value === '' ? undefined : Math.max(0, +e.target.value) })} /></label>
         </div>
       )}
       <div className="grid kpis">
@@ -41,7 +41,7 @@ export function Money({ p, m, currency, onSave }: { p: Project; m: Metrics; curr
             {eac && m.bac > 0 && <li>At the current spending rate the project is forecast to cost <b>{num(eac)}{c}</b> against a budget of {num(m.bac)}{c}.</li>}
           </ul>
         )}
-        <p className="small faint" style={{ marginBottom: 0 }}>SPI = value earned ÷ value planned. CPI = value earned ÷ money spent. 1.00 means exactly on plan. Amounts are shown as entered; the app never converts currencies.</p>
+        <p className="small faint" style={{ marginBottom: 0 }}>SPI = value earned ÷ value planned. CPI = value earned ÷ money spent. 1.00 means exactly on plan. Spent = expenses + logged time at hourly rates + this lump sum (see Costs & time). Amounts are shown as entered; the app never converts currencies.</p>
       </div>
     </div>
   );

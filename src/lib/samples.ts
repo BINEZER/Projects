@@ -1,4 +1,4 @@
-import type { Config, Item, Project, Raid, Sprint } from '../types';
+import type { Config, Item, Member, Project, Raid, Sprint } from '../types';
 import { stagesFrom } from './templates';
 import { uid } from './progress';
 import { isoDay } from './pm';
@@ -6,12 +6,19 @@ import { isoDay } from './pm';
 const DAY = 86_400_000;
 const day = (n: number) => isoDay(Date.now() + n * DAY);
 
+export const sampleTeam = (): Member[] => [
+  { id: uid(), name: 'Hanna (sample)', role: 'Site engineer', rate: 450 },
+  { id: uid(), name: 'Dawit (sample)', role: 'Developer', rate: 600 },
+  { id: uid(), name: 'Selam (sample)', role: 'Operations', rate: 400 },
+];
+
 /** A small, realistic portfolio that demonstrates every level and method. */
-export function samples(config: Config): Project[] {
+export function samples(config: Config, team: Member[] = []): Project[] {
+  const [hanna, dawit, selam] = [team[0]?.id, team[1]?.id, team[2]?.id];
   const now = Date.now();
   const tpl = (name: string) => config.templates.find((t) => t.name === name) ?? config.templates[0];
   const base = (title: string, kind: Project['kind'], extra: Partial<Project> = {}): Project => ({
-    id: uid(), title, kind, method: 'traditional', category: 'Uncategorized', status: 'active', notes: '', fields: [], stages: [], backlog: [], sprints: [], risks: [],
+    id: uid(), title, kind, method: 'traditional', category: 'Uncategorized', status: 'active', notes: '', fields: [], stages: [], backlog: [], sprints: [], risks: [], expenses: [], time: [],
     log: [{ id: uid(), at: now, text: 'Created from sample data' }], createdAt: now - 30 * DAY, updatedAt: now, ...extra,
   });
   const staged = (name: string, prog: number[]) => stagesFrom(tpl(name)).map((s, i) => ({ ...s, progress: prog[i] ?? 0 }));
@@ -67,6 +74,40 @@ export function samples(config: Config): Project[] {
   });
   const home = base('Kids’ room renovation', 'project', { category: 'Personal', due: day(45), stages: staged('Home / family', [100, 50]) });
   const audit = base('Q2 supplier audit', 'project', { category: 'Nigist LLC', status: 'done', completedAt: now - 8 * DAY, due: day(-10), stages: staged('Blank', [100, 100, 100]) });
+
+  // ---- owners, phase dates, tasks, expenses and time (demonstrates teams, timeline and costs) ----
+  portfolio.ownerId = selam; progEl.ownerId = hanna; progTech.ownerId = dawit;
+  [lift, lift2].forEach((x) => (x.ownerId = hanna)); [app, web].forEach((x) => (x.ownerId = dawit)); [coffee, home].forEach((x) => (x.ownerId = selam));
+  const phaseDates = (p: Project, ranges: [number, number][], owner?: string) => p.stages.forEach((s, i) => { if (ranges[i]) { s.start = day(ranges[i][0]); s.due = day(ranges[i][1]); s.ownerId = owner; } });
+  phaseDates(lift, [[-45, -40], [-40, -25], [-25, -18], [-18, -5], [-5, 2], [2, 5]], hanna);
+  phaseDates(coffee, [[-30, -26], [-26, -15], [-15, -5], [-5, 3], [3, 10], [10, 14]], selam);
+  const task = (title: string, status: Item['status'], assigneeId: string | undefined, due: number, est: number, stageId?: string): Item =>
+    ({ id: uid(), title, points: 0, status, assigneeId, due: day(due), estimateHours: est, stageId, doneAt: status === 'done' ? now - 5 * DAY : undefined });
+  const mech = lift.stages[3];
+  mech.source = 'backlog';
+  lift.backlog = [task('Install guide rails', 'done', hanna, -12, 24, mech.id), task('Mount car frame', 'done', hanna, -8, 16, mech.id), task('Hoist machine & cabling', 'doing', hanna, -1, 20, mech.id), task('Install landing doors', 'todo', hanna, 2, 16, mech.id)];
+  lift.actualCost = 300_000;
+  lift.expenses = [
+    { id: uid(), date: day(-30), description: 'Motor & controller (import)', amount: 420_000, category: 'Materials' },
+    { id: uid(), date: day(-22), description: 'Freight & customs', amount: 135_000, category: 'Logistics' },
+  ];
+  lift.time = [
+    { id: uid(), date: day(-14), hours: 8, memberId: hanna, note: 'Rails alignment', itemId: lift.backlog[0].id },
+    { id: uid(), date: day(-9), hours: 12, memberId: hanna, note: '', itemId: lift.backlog[1].id },
+    { id: uid(), date: day(-2), hours: 9, memberId: hanna, note: 'Hoisting', itemId: lift.backlog[2].id },
+  ];
+  app.backlog.forEach((x, i) => { x.assigneeId = i % 2 ? hanna : dawit; if (x.status !== 'done') { x.due = day(3 + i); x.estimateHours = x.points * 3; } });
+  app.actualCost = 150_000;
+  app.expenses = [{ id: uid(), date: day(-12), description: 'Cloud hosting', amount: 8_000, category: 'Infrastructure' }, { id: uid(), date: day(-5), description: 'Design assets', amount: 15_000, category: 'Design' }];
+  app.time = [
+    { id: uid(), date: day(-6), hours: 14, memberId: dawit, note: 'Customer dashboard', itemId: app.backlog[2].id },
+    { id: uid(), date: day(-3), hours: 10, memberId: dawit, note: 'Service request form', itemId: app.backlog[3].id },
+    { id: uid(), date: day(-1), hours: 6, memberId: hanna, note: 'Invoice view' },
+  ];
+  coffee.actualCost = 1_700_000;
+  coffee.expenses = [{ id: uid(), date: day(-10), description: 'Lab quality tests', amount: 12_000, category: 'Quality' }, { id: uid(), date: day(-6), description: 'Export permit fees', amount: 38_000, category: 'Permits' }];
+  coffee.backlog = [task('Book container', 'doing', selam, 2, 4, coffee.stages[3].id), task('Prepare bill of lading', 'todo', selam, 4, 3, coffee.stages[3].id), task('Confirm buyer payment terms', 'todo', undefined, 6, 2, coffee.stages[4].id)];
+  coffee.time = [{ id: uid(), date: day(-4), hours: 5, memberId: selam, note: 'Permit follow-up' }];
 
   return [portfolio, progEl, progTech, lift, lift2, app, web, coffee, home, audit];
 }

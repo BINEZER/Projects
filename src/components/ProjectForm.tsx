@@ -3,7 +3,7 @@ import type { Config, Field, Health, Kind, Method, Project } from '../types';
 import { uid } from '../lib/progress';
 import { stagesFrom } from '../lib/templates';
 import { addDays, isoDay, KIND_LABEL, METHOD_LABEL, parentOptions } from '../lib/pm';
-import { Icon, I, Modal } from './ui';
+import { Icon, I, MemberSelect, Modal } from './ui';
 
 /** Create (no `project`) or edit an item at any level: portfolio, program or project. */
 export function ProjectForm({ config, categories, all, project, defaults, onSave, onDelete, onClose }: {
@@ -31,6 +31,7 @@ export function ProjectForm({ config, categories, all, project, defaults, onSave
   const [budget, setBudget] = useState(project?.budget !== undefined ? String(project.budget) : '');
   const [status, setStatus] = useState(project?.status ?? 'active');
   const [health, setHealth] = useState<Health | ''>(project?.healthOverride ?? '');
+  const [ownerId, setOwnerId] = useState(project?.ownerId);
   const [notes, setNotes] = useState(project?.notes ?? '');
   const [fields, setFields] = useState<Field[]>(project?.fields ?? []);
 
@@ -53,7 +54,7 @@ export function ProjectForm({ config, categories, all, project, defaults, onSave
       const sprints = isProject && method !== 'traditional' && (tpl?.sprintDays ?? 0) > 0
         ? [{ id: uid(), name: 'Sprint 1', start: today, end: addDays(today, (tpl?.sprintDays ?? 14) - 1), goal: '' }] : [];
       base = {
-        id: uid(), createdAt: now, kind, method, title, category, status: 'active', notes: '', fields: [], backlog: [], risks: [], sprints,
+        id: uid(), createdAt: now, kind, method, title, category, status: 'active', notes: '', fields: [], backlog: [], risks: [], expenses: [], time: [], sprints,
         stages: isProject && tpl && method !== 'agile' ? stagesFrom(tpl) : [],
         log: [{ id: uid(), at: now, text: `${KIND_LABEL[kind]} created` }], updatedAt: now,
       };
@@ -61,7 +62,7 @@ export function ProjectForm({ config, categories, all, project, defaults, onSave
     onSave({
       ...base, title: title.trim(), method, category: category.trim() || 'Uncategorized', status, notes, updatedAt: now,
       parentId: parentId || undefined, weight: Math.max(0.1, +weight || 1), ref: ref.trim() || undefined, start: start || undefined, due: due || undefined,
-      budget: isProject && budget !== '' ? Math.max(0, +budget || 0) : undefined, healthOverride: health || undefined,
+      budget: isProject && budget !== '' ? Math.max(0, +budget || 0) : undefined, healthOverride: health || undefined, ownerId,
       fields: fields.filter((f) => f.label.trim()), completedAt: status === 'done' ? project?.completedAt ?? now : undefined,
     });
   };
@@ -110,6 +111,7 @@ export function ProjectForm({ config, categories, all, project, defaults, onSave
             {parentId && <label className="f" style={{ flex: 1 }}>Weight in parent<input type="number" min={0.1} step={0.5} value={weight} onChange={(e) => setWeight(e.target.value)} /></label>}
           </div>
         )}
+        <label className="f">Owner / responsible<MemberSelect members={config.team} value={ownerId} onChange={setOwnerId} empty={config.team.length ? 'No owner' : 'No owner (add your team in Admin → Team)'} /></label>
         <div className="row">
           <label className="f" style={{ flex: 1 }}>Category
             <input type="text" list="cats" value={category} onChange={(e) => setCategory(e.target.value)} />
